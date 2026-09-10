@@ -1,0 +1,402 @@
+# .github/workflows/build.yml
+name: Build BadKernel IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build iOS IPA
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Select Xcode version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Setup iOS SDK
+        run: |
+          echo "Available SDKs:"
+          xcodebuild -showsdks
+          echo "iOS SDK path:"
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Clone BadKernel
+        run: |
+          if [ ! -d "Bad-Kernel" ]; then
+            git clone https://github.com/guigui357/Bad-Kernel.git Bad-Kernel
+          fi
+          ls -la Bad-Kernel/
+          ls -la Bad-Kernel/headers/ || true
+          ls -la Bad-Kernel/*.a || true
+
+      - name: Build BadKernel library
+        run: |
+          cd Bad-Kernel
+          if [ -f "Makefile" ]; then
+            make clean || true
+            make lib
+          fi
+          ls -la *.a || echo "No .a files found"
+          ls -la *.o || echo "No .o files found"
+
+      - name: Verify BadKernel artifacts
+        run: |
+          if [ ! -f "Bad-Kernel/libBadKernel.a" ]; then
+            echo "[!] libBadKernel.a not found, attempting to build from source"
+            cd Bad-Kernel
+            find . -name "*.m" -o -name "*.c" | head -20
+            # Try to compile manually if Makefile failed
+            xcrun --sdk iphoneos clang -arch arm64 \
+              -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+              -mios-version-min=14.0 \
+              -O2 -fobjc-arc \
+              -Iheaders \
+              -c BadKernel/BadKernel.m \
+              -o BadKernel.o
+            ar rcs libBadKernel.a BadKernel.o
+          fi
+          ls -la Bad-Kernel/libBadKernel.a
+
+      - name: Create Xcode project structure
+        run: |
+          mkdir -p BadKernelTest
+          mkdir -p BadKernelTest/BadKernelTest
+          mkdir -p BadKernelTest/BadKernelTest.xcodeproj
+
+      - name: Generate Xcode project (project.pbxproj)
+        run: |
+          mkdir -p BadKernelTest/BadKernelTest.xcodeproj
+          cat > BadKernelTest/BadKernelTest.xcodeproj/project.pbxproj << 'PBXPROJ_EOF'
+          // !$*UTF8*$!
+          {
+              archiveVersion = 1;
+              classes = {
+              };
+              objectVersion = 56;
+              objects = {
+
+          /* Begin PBXBuildFile section */
+                  A1000001000000000000001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A1000002000000000000001 /* main.m */; };
+                  A1000001000000000000002 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = A1000002000000000000002 /* AppDelegate.m */; };
+                  A1000001000000000000003 /* BadKernelTestViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A1000002000000000000003 /* BadKernelTestViewController.m */; };
+                  A1000001000000000000004 /* libBadKernel.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000002000000000000004 /* libBadKernel.a */; };
+                  A1000001000000000000005 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000002000000000000005 /* Foundation.framework */; };
+                  A1000001000000000000006 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000002000000000000006 /* UIKit.framework */; };
+                  A1000001000000000000007 /* IOSurface.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000002000000000000007 /* IOSurface.framework */; };
+                  A1000001000000000000008 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000002000000000000008 /* CoreFoundation.framework */; };
+          /* End PBXBuildFile section */
+
+          /* Begin PBXFileReference section */
+                  A1000002000000000000001 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+                  A1000002000000000000002 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+                  A1000002000000000000003 /* BadKernelTestViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BadKernelTestViewController.m; sourceTree = "<group>"; };
+                  A1000002000000000000004 /* libBadKernel.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libBadKernel.a; path = ../Bad-Kernel/libBadKernel.a; sourceTree = "<group>"; };
+                  A1000002000000000000005 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+                  A1000002000000000000006 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+                  A1000002000000000000007 /* IOSurface.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOSurface.framework; path = System/Library/Frameworks/IOSurface.framework; sourceTree = SDKROOT; };
+                  A1000002000000000000008 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+                  A1000002000000000000009 /* BadKernelTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BadKernelTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                  A100000200000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+          /* End PBXFileReference section */
+
+          /* Begin PBXFrameworksBuildPhase section */
+                  A1000003000000000000001 /* Frameworks */ = {
+                      isa = PBXFrameworksBuildPhase;
+                      buildActionMask = 2147483647;
+                      files = (
+                          A1000001000000000000004 /* libBadKernel.a in Frameworks */,
+                          A1000001000000000000005 /* Foundation.framework in Frameworks */,
+                          A1000001000000000000006 /* UIKit.framework in Frameworks */,
+                          A1000001000000000000007 /* IOSurface.framework in Frameworks */,
+                          A1000001000000000000008 /* CoreFoundation.framework in Frameworks */,
+                      );
+                      runOnlyForDeploymentPostprocessing = 0;
+                  };
+          /* End PBXFrameworksBuildPhase section */
+
+          /* Begin PBXGroup section */
+                  A1000004000000000000001 = {
+                      isa = PBXGroup;
+                      children = (
+                          A1000004000000000000002 /* BadKernelTest */,
+                          A1000004000000000000003 /* Frameworks */,
+                          A1000004000000000000004 /* Products */,
+                      );
+                      sourceTree = "<group>";
+                  };
+                  A1000004000000000000002 /* BadKernelTest */ = {
+                      isa = PBXGroup;
+                      children = (
+                          A1000002000000000000001 /* main.m */,
+                          A1000002000000000000002 /* AppDelegate.m */,
+                          A1000002000000000000003 /* BadKernelTestViewController.m */,
+                          A100000200000000000000A /* Info.plist */,
+                          A1000002000000000000004 /* libBadKernel.a */,
+                      );
+                      path = BadKernelTest;
+                      sourceTree = "<group>";
+                  };
+                  A1000004000000000000003 /* Frameworks */ = {
+                      isa = PBXGroup;
+                      children = (
+                          A1000002000000000000005 /* Foundation.framework */,
+                          A1000002000000000000006 /* UIKit.framework */,
+                          A1000002000000000000007 /* IOSurface.framework */,
+                          A1000002000000000000008 /* CoreFoundation.framework */,
+                      );
+                      name = Frameworks;
+                      sourceTree = "<group>";
+                  };
+                  A1000004000000000000004 /* Products */ = {
+                      isa = PBXGroup;
+                      children = (
+                          A1000002000000000000009 /* BadKernelTest.app */,
+                      );
+                      name = Products;
+                      sourceTree = "<group>";
+                  };
+          /* End PBXGroup section */
+
+          /* Begin PBXNativeTarget section */
+                  A1000005000000000000001 /* BadKernelTest */ = {
+                      isa = PBXNativeTarget;
+                      buildConfigurationList = A1000006000000000000001 /* Build configuration list for PBXNativeTarget "BadKernelTest" */;
+                      buildPhases = (
+                          A1000007000000000000001 /* Sources */,
+                          A1000003000000000000001 /* Frameworks */,
+                          A1000008000000000000001 /* Resources */,
+                      );
+                      buildRules = (
+                      );
+                      dependencies = (
+                      );
+                      name = BadKernelTest;
+                      productName = BadKernelTest;
+                      productReference = A1000002000000000000009 /* BadKernelTest.app */;
+                      productType = "com.apple.product-type.application";
+                  };
+          /* End PBXNativeTarget section */
+
+          /* Begin PBXProject section */
+                  A1000009000000000000001 /* Project object */ = {
+                      isa = PBXProject;
+                      attributes = {
+                          BuildIndependentTargetsInParallel = 1;
+                          LastUpgradeCheck = 1500;
+                          TargetAttributes = {
+                              A1000005000000000000001 = {
+                                  CreatedOnToolsVersion = 15.0;
+                              };
+                          };
+                      };
+                      buildConfigurationList = A1000006000000000000002 /* Build configuration list for PBXProject "BadKernelTest" */;
+                      compatibilityVersion = "Xcode 14.0";
+                      developmentRegion = en;
+                      hasScannedForEncodings = 0;
+                      knownRegions = (
+                          en,
+                          Base,
+                      );
+                      mainGroup = A1000004000000000000001;
+                      productRefGroup = A1000004000000000000004 /* Products */;
+                      projectDirPath = "";
+                      projectRoot = "";
+                      targets = (
+                          A1000005000000000000001 /* BadKernelTest */,
+                      );
+                  };
+          /* End PBXProject section */
+
+          /* Begin PBXResourcesBuildPhase section */
+                  A1000008000000000000001 /* Resources */ = {
+                      isa = PBXResourcesBuildPhase;
+                      buildActionMask = 2147483647;
+                      files = (
+                      );
+                      runOnlyForDeploymentPostprocessing = 0;
+                  };
+          /* End PBXResourcesBuildPhase section */
+
+          /* Begin PBXSourcesBuildPhase section */
+                  A1000007000000000000001 /* Sources */ = {
+                      isa = PBXSourcesBuildPhase;
+                      buildActionMask = 2147483647;
+                      files = (
+                          A1000001000000000000001 /* main.m in Sources */,
+                          A1000001000000000000002 /* AppDelegate.m in Sources */,
+                          A1000001000000000000003 /* BadKernelTestViewController.m in Sources */,
+                      );
+                      runOnlyForDeploymentPostprocessing = 0;
+                  };
+          /* End PBXSourcesBuildPhase section */
+
+          /* Begin XCBuildConfiguration section */
+                  A100000A000000000000001 /* Debug */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          ALWAYS_SEARCH_USER_PATHS = NO;
+                          CLANG_ENABLE_MODULES = YES;
+                          CLANG_ENABLE_OBJC_ARC = YES;
+                          COPY_PHASE_STRIP = NO;
+                          DEBUG_INFORMATION_FORMAT = dwarf;
+                          ENABLE_STRICT_OBJC_MSGSEND = YES;
+                          GCC_C_LANGUAGE_STANDARD = gnu11;
+                          GCC_DYNAMIC_NO_PIC = NO;
+                          GCC_NO_COMMON_BLOCKS = YES;
+                          GCC_OPTIMIZATION_LEVEL = 0;
+                          GCC_PREPROCESSOR_DEFINITIONS = (
+                              "DEBUG=1",
+                              "$(inherited)",
+                          );
+                          IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+                          MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+                          MTL_FAST_MATH = YES;
+                          ONLY_ACTIVE_ARCH = YES;
+                          SDKROOT = iphoneos;
+                          TARGETED_DEVICE_FAMILY = "1,2";
+                      };
+                      name = Debug;
+                  };
+                  A100000A000000000000002 /* Release */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          ALWAYS_SEARCH_USER_PATHS = NO;
+                          CLANG_ENABLE_MODULES = YES;
+                          CLANG_ENABLE_OBJC_ARC = YES;
+                          COPY_PHASE_STRIP = NO;
+                          DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+                          ENABLE_NS_ASSERTIONS = NO;
+                          ENABLE_STRICT_OBJC_MSGSEND = YES;
+                          GCC_C_LANGUAGE_STANDARD = gnu11;
+                          GCC_NO_COMMON_BLOCKS = YES;
+                          IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+                          MTL_ENABLE_DEBUG_INFO = NO;
+                          MTL_FAST_MATH = YES;
+                          SDKROOT = iphoneos;
+                          TARGETED_DEVICE_FAMILY = "1,2";
+                          VALIDATE_PRODUCT = YES;
+                      };
+                      name = Release;
+                  };
+                  A100000A000000000000003 /* Debug */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                          CODE_SIGN_STYLE = Automatic;
+                          CURRENT_PROJECT_VERSION = 1;
+                          GENERATE_INFOPLIST_FILE = NO;
+                          INFOPLIST_FILE = BadKernelTest/Info.plist;
+                          LD_RUNPATH_SEARCH_PATHS = (
+                              "$(inherited)",
+                              "@executable_path/Frameworks",
+                          );
+                          MARKETING_VERSION = 1.0;
+                          PRODUCT_BUNDLE_IDENTIFIER = com.badkernel.test;
+                          PRODUCT_NAME = "$(TARGET_NAME)";
+                          SWIFT_EMIT_LOC_STRINGS = YES;
+                          TARGETED_DEVICE_FAMILY = "1,2";
+                          VERSIONING_SYSTEM = "apple-generic";
+                      };
+                      name = Debug;
+                  };
+                  A100000A000000000000004 /* Release */ = {
+                      isa = XCBuildConfiguration;
+                      buildSettings = {
+                          ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                          CODE_SIGN_STYLE = Automatic;
+                          CURRENT_PROJECT_VERSION = 1;
+                          GENERATE_INFOPLIST_FILE = NO;
+                          INFOPLIST_FILE = BadKernelTest/Info.plist;
+                          LD_RUNPATH_SEARCH_PATHS = (
+                              "$(inherited)",
+                              "@executable_path/Frameworks",
+                          );
+                          MARKETING_VERSION = 1.0;
+                          PRODUCT_BUNDLE_IDENTIFIER = com.badkernel.test;
+                          PRODUCT_NAME = "$(TARGET_NAME)";
+                          SWIFT_EMIT_LOC_STRINGS = YES;
+                          TARGETED_DEVICE_FAMILY = "1,2";
+                          VERSIONING_SYSTEM = "apple-generic";
+                      };
+                      name = Release;
+                  };
+          /* End XCBuildConfiguration section */
+
+          /* Begin XCConfigurationList section */
+                  A1000006000000000000001 /* Build configuration list for PBXNativeTarget "BadKernelTest" */ = {
+                      isa = XCConfigurationList;
+                      buildConfigurations = (
+                          A100000A000000000000003 /* Debug */,
+                          A100000A000000000000004 /* Release */,
+                      );
+                      defaultConfigurationIsVisible = 0;
+                      defaultConfigurationName = Release;
+                  };
+                  A1000006000000000000002 /* Build configuration list for PBXProject "BadKernelTest" */ = {
+                      isa = XCConfigurationList;
+                      buildConfigurations = (
+                          A100000A000000000000001 /* Debug */,
+                          A100000A000000000000002 /* Release */,
+                      );
+                      defaultConfigurationIsVisible = 0;
+                      defaultConfigurationName = Release;
+                  };
+          /* End XCConfigurationList section */
+              };
+              rootObject = A1000009000000000000001 /* Project object */;
+          }
+          PBXPROJ_EOF
+
+      - name: Build IPA with xcodebuild
+        run: |
+          cd BadKernelTest
+          xcodebuild -project BadKernelTest.xcodeproj \
+            -scheme BadKernelTest \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            -derivedDataPath ./build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            HEADER_SEARCH_PATHS="$(PWD)/../Bad-Kernel/headers" \
+            LIBRARY_SEARCH_PATHS="$(PWD)/../Bad-Kernel" \
+            OTHER_LDFLAGS="-L$(PWD)/../Bad-Kernel -lBadKernel" \
+            build
+
+      - name: Create IPA
+        run: |
+          cd BadKernelTest
+          mkdir -p Payload
+          cp -R ./build/Build/Products/Release-iphoneos/BadKernelTest.app Payload/
+          zip -r BadKernelTest.ipa Payload
+          ls -la BadKernelTest.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BadKernelTest-IPA
+          path: BadKernelTest/BadKernelTest.ipa
+          retention-days: 30
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            BadKernelTest/build/Logs/
+          retention-days: 7
