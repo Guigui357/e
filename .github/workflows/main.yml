@@ -26,22 +26,18 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
           xcrun --sdk iphoneos --find clang
-          xcrun --sdk iphoneos --find ar
-          xcrun --sdk iphoneos --find ld
-          xcrun --sdk iphoneos --find lipo
-          xcrun --sdk iphoneos --find codesign
 
       - name: Clone BadKernel
         run: |
           if [ ! -d "Bad-Kernel" ]; then
-            git clone https://github.com/Guigui357/Bad-Kernel.git Bad-Kernel
+            git clone https://github.com/YOUR_USERNAME/Bad-Kernel.git Bad-Kernel
           fi
           echo "=== BadKernel contents ==="
           ls -la Bad-Kernel/
           echo "=== Headers ==="
           ls -la Bad-Kernel/headers/ 2>/dev/null || echo "no headers dir"
           echo "=== Source ==="
-          ls -la Bad-Kernel/BadKernel/ 2>/dev/null || echo "no BadKernel dir"
+          find Bad-Kernel -name "*.m" -o -name "*.h" | head -20
 
       - name: Build libBadKernel.a with clang
         run: |
@@ -59,7 +55,7 @@ jobs:
           mkdir -p build_out
 
           # Find all source files
-          SRC_FILES=$(find . -name "BadKernel.m" -o -name "*.m" | grep -v test | grep -v Test)
+          SRC_FILES=$(find . -name "BadKernel.m" | grep -v test | grep -v Test)
           echo "[*] Source files:"
           echo "$SRC_FILES"
 
@@ -87,13 +83,12 @@ jobs:
 
           echo "[+] libBadKernel.a built:"
           ls -la libBadKernel.a
-          lipo -info libBadKernel.a || true
 
       - name: Generate app sources
         run: |
-          mkdir -p app/BadKernelTest
+          mkdir -p app_src
 
-          cat > app/BadKernelTest/main.m << 'EOF'
+          cat > app_src/main.m << 'EOF'
           #import <UIKit/UIKit.h>
           #import "AppDelegate.h"
 
@@ -104,7 +99,7 @@ jobs:
           }
           EOF
 
-          cat > app/BadKernelTest/AppDelegate.h << 'EOF'
+          cat > app_src/AppDelegate.h << 'EOF'
           #import <UIKit/UIKit.h>
 
           @interface AppDelegate : UIResponder <UIApplicationDelegate>
@@ -112,15 +107,15 @@ jobs:
           @end
           EOF
 
-          cat > app/BadKernelTest/AppDelegate.m << 'EOF'
+          cat > app_src/AppDelegate.m << 'EOF'
           #import "AppDelegate.h"
-          #import "BadKernelTestViewController.h"
+          #import "BadKernelViewController.h"
 
           @implementation AppDelegate
 
           - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
               self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-              self.window.rootViewController = [[BadKernelTestViewController alloc] init];
+              self.window.rootViewController = [[BadKernelViewController alloc] init];
               [self.window makeKeyAndVisible];
               return YES;
           }
@@ -128,11 +123,11 @@ jobs:
           @end
           EOF
 
-          cat > app/BadKernelTest/BadKernelTestViewController.h << 'EOF'
+          cat > app_src/BadKernelViewController.h << 'EOF'
           #import <UIKit/UIKit.h>
           #import "BadKernel.h"
 
-          @interface BadKernelTestViewController : UIViewController
+          @interface BadKernelViewController : UIViewController
 
           @property (nonatomic, strong) UITextView *logView;
           @property (nonatomic, strong) UIButton *runButton;
@@ -144,10 +139,10 @@ jobs:
           @end
           EOF
 
-          cat > app/BadKernelTest/BadKernelTestViewController.m << 'EOF'
-          #import "BadKernelTestViewController.h"
+          cat > app_src/BadKernelViewController.m << 'EOF'
+          #import "BadKernelViewController.h"
 
-          @implementation BadKernelTestViewController
+          @implementation BadKernelViewController
 
           - (void)viewDidLoad {
               [super viewDidLoad];
@@ -244,13 +239,6 @@ jobs:
                       uint64_t val = BadKernelKRead64(self.kernelBase + 0x1000);
                       [self log:[NSString stringWithFormat:@"Read at base+0x1000: 0x%016llx", val]];
 
-                      uint64_t testAddr = self.kernelBase + 0x2000;
-                      uint64_t original = BadKernelKRead64(testAddr);
-                      int wret = BadKernelKWrite64(testAddr, 0xdeadbeefcafebabe);
-                      uint64_t modified = BadKernelKRead64(testAddr);
-                      BadKernelKWrite64(testAddr, original);
-                      [self log:[NSString stringWithFormat:@"Write returned: %d, modified: 0x%016llx", wret, modified]];
-
                       dispatch_async(dispatch_get_main_queue(), ^{
                           self.readButton.enabled = YES;
                           self.readButton.alpha = 1.0;
@@ -332,7 +320,7 @@ jobs:
 
       - name: Generate Info.plist
         run: |
-          cat > app/BadKernelTest/Info.plist << 'EOF'
+          cat > app_src/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -340,13 +328,13 @@ jobs:
               <key>CFBundleDevelopmentRegion</key>
               <string>en</string>
               <key>CFBundleExecutable</key>
-              <string>BadKernelTest</string>
+              <string>BadKernelApp</string>
               <key>CFBundleIdentifier</key>
               <string>com.badkernel.test</string>
               <key>CFBundleInfoDictionaryVersion</key>
               <string>6.0</string>
               <key>CFBundleName</key>
-              <string>BadKernelTest</string>
+              <string>BadKernelApp</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
@@ -363,16 +351,11 @@ jobs:
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
               </array>
-              <key>NSAppTransportSecurity</key>
-              <dict>
-                  <key>NSAllowsArbitraryLoads</key>
-                  <true/>
-              </dict>
           </dict>
           </plist>
           EOF
 
-      - name: Compile app with clang (no Xcode project)
+      - name: Compile app binary with clang
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -381,14 +364,16 @@ jobs:
           echo "[*] Compiling app with clang..."
           echo "[*] SDK: $SDK_PATH"
 
-          cd app
+          cd app_src
+
+          # Output to build/ to avoid name conflict with BadKernelTest directory
+          mkdir -p ../build
 
           $CLANG -arch arm64 \
             -isysroot "$SDK_PATH" \
             -mios-version-min=14.0 \
             -O2 -fobjc-arc -fmodules \
             -I../Bad-Kernel/headers \
-            -I./BadKernelTest \
             -framework Foundation \
             -framework UIKit \
             -framework IOSurface \
@@ -396,39 +381,32 @@ jobs:
             -lz -lresolv -ldl \
             -L../Bad-Kernel \
             -lBadKernel \
-            -o BadKernelTest \
-            BadKernelTest/main.m \
-            BadKernelTest/AppDelegate.m \
-            BadKernelTest/BadKernelTestViewController.m
+            -o ../build/BadKernelApp \
+            main.m \
+            AppDelegate.m \
+            BadKernelViewController.m
 
           echo "[+] Binary built:"
-          file BadKernelTest
-          otool -L BadKernelTest || true
+          file ../build/BadKernelApp
 
       - name: Package into .app bundle
         run: |
           set -e
-          cd app
 
-          APP_DIR="BadKernelTest.app"
+          APP_DIR="build/BadKernelApp.app"
           mkdir -p "$APP_DIR"
 
-          cp BadKernelTest "$APP_DIR/BadKernelTest"
-          cp BadKernelTest/Info.plist "$APP_DIR/Info.plist"
+          cp build/BadKernelApp "$APP_DIR/BadKernelApp"
+          cp app_src/Info.plist "$APP_DIR/Info.plist"
 
           echo "[+] App bundle:"
           ls -la "$APP_DIR"
-          file "$APP_DIR/BadKernelTest"
 
       - name: Sign app (ad-hoc for TrollStore)
         run: |
           set -e
-          cd app
 
-          # Ad-hoc sign for TrollStore
-          codesign --force --sign - \
-            --entitlements /dev/stdin \
-            BadKernelTest.app/BadKernelTest << 'EOF'
+          cat > entitlements.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -449,34 +427,31 @@ jobs:
           </plist>
           EOF
 
-          codesign -dv BadKernelTest.app/BadKernelTest || true
+          codesign --force --sign - \
+            --entitlements entitlements.plist \
+            build/BadKernelApp.app/BadKernelApp
+
+          codesign -dv build/BadKernelApp.app/BadKernelApp || true
 
       - name: Create IPA
         run: |
           set -e
-          cd app
+          cd build
 
           mkdir -p Payload
-          cp -R BadKernelTest.app Payload/
+          cp -R BadKernelApp.app Payload/
 
-          zip -r BadKernelTest.ipa Payload
+          zip -r BadKernelApp.ipa Payload
 
           echo "[+] IPA created:"
-          ls -la BadKernelTest.ipa
-          unzip -l BadKernelTest.ipa
+          ls -la BadKernelApp.ipa
+          unzip -l BadKernelApp.ipa
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BadKernelTest-IPA
-          path: app/BadKernelTest.ipa
-          retention-days: 30
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BadKernelTest-Binary
-          path: app/BadKernelTest
+          name: BadKernelApp-IPA
+          path: build/BadKernelApp.ipa
           retention-days: 30
 
       - name: Upload libBadKernel.a artifact
