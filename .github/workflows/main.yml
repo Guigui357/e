@@ -30,7 +30,7 @@ jobs:
       - name: Clone BadKernel
         run: |
           if [ ! -d "Bad-Kernel" ]; then
-            git clone https://github.com/YOUR_USERNAME/Bad-Kernel.git Bad-Kernel
+            git clone https://github.com/Guigui357/Bad-Kernel.git Bad-Kernel
           fi
           echo "=== BadKernel contents ==="
           ls -la Bad-Kernel/
